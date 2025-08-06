@@ -1,0 +1,16 @@
+{
+  "watch": ["index.js", "*.js", "*.json"],
+  "ignore": ["node_modules/", "extracted_images/", "uploads/", "*.log", "*.md"],
+  "ext": "js,json",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": "1000",
+  "verbose": true,
+  "restartable": "rs",
+  "colours": true,
+  "events": {
+    "restart": "echo '🔄 服务重启中...'",
+    "crash": "echo '💥 服务崩溃，正在重启...'"
+  }
+}
