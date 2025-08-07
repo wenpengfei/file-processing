@@ -49,20 +49,36 @@ class FileUploadService {
    * @param {Function} cb - 回调函数
    */
   fileFilter(req, file, cb) {
-    const allowedTypes = ['.pdf', '.docx', '.doc']
+    // 根据请求路径决定允许的文件类型
+    const isOCRRequest = req.path && req.path.includes('/ocr')
+    
+    let allowedTypes
+    let errorMessage
+    
+    if (isOCRRequest) {
+      // OCR请求允许图片格式
+      allowedTypes = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']
+      errorMessage = '只支持图片格式文件 (JPG, PNG, GIF, BMP, TIFF, WEBP)'
+    } else {
+      // 默认允许文档格式
+      allowedTypes = ['.pdf', '.docx', '.doc']
+      errorMessage = '只支持 PDF 和 Word 文档'
+    }
+    
     const fileExtension = path.extname(file.originalname).toLowerCase()
 
     console.log('文件上传验证:', {
       originalName: file.originalname,
       fileExtension: fileExtension,
       allowedTypes: allowedTypes,
-      isAllowed: allowedTypes.includes(fileExtension)
+      isAllowed: allowedTypes.includes(fileExtension),
+      isOCRRequest: isOCRRequest
     })
 
     if (allowedTypes.includes(fileExtension)) {
       cb(null, true)
     } else {
-      const errorMsg = `不支持的文件格式: ${fileExtension}。只支持 PDF 和 Word 文档。`
+      const errorMsg = `不支持的文件格式: ${fileExtension}。${errorMessage}`
       console.log('文件格式验证失败:', errorMsg)
       cb(new Error(errorMsg), false)
     }

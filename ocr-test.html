@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR文字识别测试</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            background: #fafafa;
+        }
+
+        .section h2 {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f0f8ff;
+            border-left: 4px solid #667eea;
+        }
+
+        .error {
+            background: #fff5f5;
+            border-left: 4px solid #e53e3e;
+        }
+
+        .success {
+            background: #f0fff4;
+            border-left: 4px solid #38a169;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+        }
+
+        .preview-image {
+            max-width: 300px;
+            max-height: 200px;
+            margin: 10px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .status.online {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔤 OCR文字识别测试</h1>
+
+        <!-- 服务状态 -->
+        <div class="section">
+            <h2>📡 服务状态</h2>
+            <div id="status" class="status">检查中...</div>
+            <button onclick="checkStatus()">检查状态</button>
+        </div>
+
+        <!-- 单张图片OCR -->
+        <div class="section">
+            <h2>📷 单张图片OCR识别</h2>
+            <div class="form-group">
+                <label for="singleImage">选择图片文件:</label>
+                <input type="file" id="singleImage" accept="image/*" onchange="previewImage(this, 'singlePreview')">
+                <img id="singlePreview" class="preview-image" style="display: none;">
+            </div>
+            <button onclick="recognizeSingleImage()">开始识别</button>
+            <div id="singleResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Base64图片OCR -->
+        <div class="section">
+            <h2>🔤 Base64图片OCR识别</h2>
+            <div class="form-group">
+                <label for="base64Image">输入Base64图片数据:</label>
+                <textarea id="base64Image" placeholder="请输入Base64编码的图片数据..."></textarea>
+            </div>
+            <button onclick="recognizeBase64Image()">开始识别</button>
+            <div id="base64Result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- 批量图片OCR -->
+        <div class="section">
+            <h2>📚 批量图片OCR识别</h2>
+            <div class="form-group">
+                <label for="batchImages">选择多张图片文件:</label>
+                <input type="file" id="batchImages" accept="image/*" multiple>
+            </div>
+            <button onclick="recognizeBatchImages()">开始批量识别</button>
+            <div id="batchResult" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3020';
+
+        // 页面加载时检查状态
+        window.onload = function () {
+            checkStatus();
+        };
+
+        // 检查OCR服务状态
+        async function checkStatus() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = '检查中...';
+            statusDiv.className = 'status';
+
+            try {
+                const response = await fetch(`${API_BASE}/ocr/status`);
+                const data = await response.json();
+
+                if (data.success) {
+                    statusDiv.textContent = '✅ OCR服务正常';
+                    statusDiv.className = 'status online';
+                } else {
+                    statusDiv.textContent = '❌ OCR服务异常';
+                    statusDiv.className = 'status offline';
+                }
+            } catch (error) {
+                statusDiv.textContent = '❌ OCR服务不可用';
+                statusDiv.className = 'status offline';
+            }
+        }
+
+        // 预览图片
+        function previewImage(input, previewId) {
+            const preview = document.getElementById(previewId);
+            const file = input.files[0];
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.style.display = 'none';
+            }
+        }
+
+        // 单张图片OCR识别
+        async function recognizeSingleImage() {
+            const fileInput = document.getElementById('singleImage');
+            const resultDiv = document.getElementById('singleResult');
+
+            if (!fileInput.files[0]) {
+                alert('请选择图片文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+
+            resultDiv.innerHTML = '<div class="loading">正在识别中...</div>';
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+
+            try {
+                const response = await fetch(`${API_BASE}/ocr/recognize`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <h3>✅ 识别成功</h3>
+                        <p><strong>文件名:</strong> ${data.data.fileName}</p>
+                        <p><strong>文件大小:</strong> ${data.data.fileSize} bytes</p>
+                        <p><strong>识别结果:</strong></p>
+                        <pre>${JSON.stringify(data.data.ocrResult, null, 2)}</pre>
+                    `;
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.innerHTML = `
+                        <h3>❌ 识别失败</h3>
+                        <p>${data.message}</p>
+                    `;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>❌ 请求失败</h3>
+                    <p>${error.message}</p>
+                `;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        // Base64图片OCR识别
+        async function recognizeBase64Image() {
+            const base64Input = document.getElementById('base64Image');
+            const resultDiv = document.getElementById('base64Result');
+
+            if (!base64Input.value.trim()) {
+                alert('请输入Base64图片数据');
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="loading">正在识别中...</div>';
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+
+            try {
+                const response = await fetch(`${API_BASE}/ocr/recognize-base64`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        base64Image: base64Input.value.trim()
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <h3>✅ 识别成功</h3>
+                        <p><strong>识别结果:</strong></p>
+                        <pre>${JSON.stringify(data.data.ocrResult, null, 2)}</pre>
+                    `;
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.innerHTML = `
+                        <h3>❌ 识别失败</h3>
+                        <p>${data.message}</p>
+                    `;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>❌ 请求失败</h3>
+                    <p>${error.message}</p>
+                `;
+                resultDiv.className = 'result error';
+            }
+        }
+
+        // 批量图片OCR识别
+        async function recognizeBatchImages() {
+            const fileInput = document.getElementById('batchImages');
+            const resultDiv = document.getElementById('batchResult');
+
+            if (!fileInput.files.length) {
+                alert('请选择图片文件');
+                return;
+            }
+
+            const formData = new FormData();
+            for (let i = 0; i < fileInput.files.length; i++) {
+                formData.append('images', fileInput.files[i]);
+            }
+
+            resultDiv.innerHTML = '<div class="loading">正在批量识别中...</div>';
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+
+            try {
+                const response = await fetch(`${API_BASE}/ocr/batch-recognize`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let resultHtml = `
+                        <h3>✅ 批量识别完成</h3>
+                        <p><strong>总文件数:</strong> ${data.data.totalFiles}</p>
+                        <p><strong>成功数量:</strong> ${data.data.successCount}</p>
+                        <p><strong>失败数量:</strong> ${data.data.errorCount}</p>
+                    `;
+
+                    if (data.data.results.length > 0) {
+                        resultHtml += '<h4>成功结果:</h4>';
+                        data.data.results.forEach((result, index) => {
+                            resultHtml += `
+                                <div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                                    <p><strong>文件 ${index + 1}:</strong> ${result.fileName}</p>
+                                    <pre>${JSON.stringify(result.ocrResult, null, 2)}</pre>
+                                </div>
+                            `;
+                        });
+                    }
+
+                    if (data.data.errors.length > 0) {
+                        resultHtml += '<h4>失败结果:</h4>';
+                        data.data.errors.forEach((error, index) => {
+                            resultHtml += `
+                                <div style="margin: 10px 0; padding: 10px; border: 1px solid #e53e3e; border-radius: 5px; background: #fff5f5;">
+                                    <p><strong>文件 ${index + 1}:</strong> ${error.fileName}</p>
+                                    <p><strong>错误:</strong> ${error.error}</p>
+                                </div>
+                            `;
+                        });
+                    }
+
+                    resultDiv.innerHTML = resultHtml;
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.innerHTML = `
+                        <h3>❌ 批量识别失败</h3>
+                        <p>${data.message}</p>
+                    `;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>❌ 请求失败</h3>
+                    <p>${error.message}</p>
+                `;
+                resultDiv.className = 'result error';
+            }
+        }
+    </script>
+</body>
+
+</html>

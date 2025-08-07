@@ -7,6 +7,7 @@ const CorsService = require('./services/corsService')
 const FileController = require('./controllers/fileController')
 const OpenRouterController = require('./controllers/openRouterController')
 const OpenAIController = require('./controllers/openaiController')
+const OCRController = require('./controllers/ocrController')
 const ErrorHandler = require('./middleware/errorHandler')
 
 const app = express()
@@ -25,6 +26,7 @@ app.use('/extracted_images', express.static(path.join(__dirname, 'extracted_imag
 const fileController = new FileController()
 const openRouterController = new OpenRouterController()
 const openaiController = new OpenAIController()
+const ocrController = new OCRController()
 
 // 文件处理路由
 app.post(
@@ -59,6 +61,20 @@ app.post('/openai/analyze-file', openaiController.analyzeFileContent.bind(openai
 app.post('/openai/generate-summary', openaiController.generateSummary.bind(openaiController))
 app.get('/openai/status', openaiController.checkStatus.bind(openaiController))
 
+// OCR路由
+app.post(
+  '/ocr/recognize',
+  ocrController.getOCRUploadMiddleware().single('image'),
+  ocrController.handleImageOCR.bind(ocrController)
+)
+app.post('/ocr/recognize-base64', ocrController.handleBase64OCR.bind(ocrController))
+app.post(
+  '/ocr/batch-recognize',
+  ocrController.getBatchOCRUploadMiddleware().array('images', 10),
+  ocrController.handleBatchOCR.bind(ocrController)
+)
+app.get('/ocr/status', ocrController.checkOCRStatus.bind(ocrController))
+
 // 错误处理中间件
 app.use(ErrorHandler.handleError)
 
@@ -82,6 +98,10 @@ app.listen(PORT, () => {
   console.log(`📝 OpenAI文件摘要: POST http://localhost:${PORT}/openai/generate-summary`)
   console.log(`🔍 OpenAI模型列表: GET http://localhost:${PORT}/openai/models`)
   console.log(`📡 OpenAI状态: GET http://localhost:${PORT}/openai/status`)
+  console.log(`🔤 OCR识别: POST http://localhost:${PORT}/ocr/recognize`)
+  console.log(`🔤 Base64 OCR识别: POST http://localhost:${PORT}/ocr/recognize-base64`)
+  console.log(`🔤 批量OCR识别: POST http://localhost:${PORT}/ocr/batch-recognize`)
+  console.log(`📡 OCR状态: GET http://localhost:${PORT}/ocr/status`)
 
   if (process.env.NODE_ENV === 'development') {
     console.log(`🔄 热加载已启用 - 修改代码后自动重启`)

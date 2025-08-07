@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid')
 const FileUploadService = require('../services/fileUploadService')
 const ImageExtractionService = require('../services/imageExtractionService')
+const OCRService = require('../services/ocrService')
 
 /**
  * 文件控制器类
@@ -10,6 +11,7 @@ class FileController {
   constructor() {
     this.fileUploadService = new FileUploadService()
     this.imageExtractionService = new ImageExtractionService()
+    this.ocrService = new OCRService()
   }
 
   /**
@@ -66,6 +68,28 @@ class FileController {
           images: imagesList
         }
       }
+
+      console.log('imagesList', imagesList)
+
+      // 过滤出真正的图片文件
+      const actualImages = imagesList.filter((image) => {
+        // 检查是否有有效的imageUrl（base64数据）
+        return image.imageUrl && image.imageUrl.startsWith('data:image/') && image.imageUrl.length > 100 // 确保有足够的base64数据
+      })
+
+      console.log(`过滤后，共有 ${actualImages.length} 张真实图片需要进行OCR`)
+
+      // const ocrPromises = actualImages.map(async (image) => {
+      //   return ocrResult
+      // })
+      const imagesBase64 = actualImages.map((image) =>
+        image.imageUrl.replace('data:image/png;base64,', '').replace('data:image/jpeg;base64,', '')
+      )
+
+      const ocrResult = await this.ocrService.recognizeTextFromBase64(imagesBase64)
+
+      // const ocrResults = await Promise.all(ocrPromises)
+      responseData.data.ocrResult = ocrResult
 
       console.log('返回响应:', responseData)
       res.json(responseData)
