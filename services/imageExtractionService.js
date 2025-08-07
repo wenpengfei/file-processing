@@ -11,15 +11,47 @@ const AdmZip = require('adm-zip')
  */
 class ImageExtractionService {
   constructor() {
+    // 移除本地存储目录，改为返回base64
     this.imagesDir = path.join(__dirname, '..', 'extracted_images')
     this.ensureImagesDirectory()
   }
 
   /**
-   * 确保图片目录存在
+   * 确保图片目录存在（用于临时存储，如果需要的话）
    */
   ensureImagesDirectory() {
     fs.ensureDirSync(this.imagesDir)
+  }
+
+  /**
+   * 将Buffer转换为base64字符串
+   * @param {Buffer} buffer - 图片数据
+   * @param {string} format - 图片格式
+   * @returns {string} base64编码的图片
+   */
+  bufferToBase64(buffer, format) {
+    const base64 = buffer.toString('base64')
+    const mimeType = this.getMimeType(format)
+    return `data:${mimeType};base64,${base64}`
+  }
+
+  /**
+   * 根据文件扩展名获取MIME类型
+   * @param {string} format - 文件格式
+   * @returns {string} MIME类型
+   */
+  getMimeType(format) {
+    const mimeTypes = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      bmp: 'image/bmp',
+      webp: 'image/webp',
+      tiff: 'image/tiff',
+      svg: 'image/svg+xml'
+    }
+    return mimeTypes[format.toLowerCase()] || 'image/jpeg'
   }
 
   /**
@@ -43,16 +75,17 @@ class ImageExtractionService {
         // 注意：pdf-lib主要用于创建和修改PDF，不直接支持图片提取
         // 这里提供一个基础实现，实际项目中可能需要使用其他专门的库
         const pageInfo = {
-          图片描述: `PDF文档第${i + 1}页`,
-          图片地址: '',
-          图片格式: 'PDF_PAGE',
-          图片路径: pdfPath,
-          原始文件名: originalFileName,
-          页面信息: {
-            页码: i + 1,
-            宽度: width,
-            高度: height
-          }
+          description: `PDF文档第${i + 1}页`,
+          imageUrl: '',
+          format: 'PDF_PAGE',
+          filePath: pdfPath,
+          originalFileName: originalFileName,
+          pageInfo: {
+            pageNumber: i + 1,
+            width: width,
+            height: height
+          },
+          note: 'PDF页面信息，实际图片提取需要专门的PDF图片提取库'
         }
 
         imagesList.push(pageInfo)
@@ -87,19 +120,16 @@ class ImageExtractionService {
             const imageBuffer = entry.getData()
             const imageFormat = path.extname(entry.entryName).substring(1).toUpperCase()
 
-            // 保存图片到本地
-            const imageFileName = `${uuidv4()}.${imageFormat.toLowerCase()}`
-            const imagePath = path.join(this.imagesDir, imageFileName)
-
-            await fs.writeFile(imagePath, imageBuffer)
+            // 转换为base64而不是保存到本地
+            const base64Data = this.bufferToBase64(imageBuffer, imageFormat)
 
             const imageInfo = {
-              图片描述: `Word文档图片${imageIndex + 1}`,
-              图片地址: `/extracted_images/${imageFileName}`,
-              图片格式: imageFormat,
-              图片路径: imagePath,
-              原始路径: entry.entryName,
-              原始文件名: originalFileName
+              description: `Word文档图片${imageIndex + 1}`,
+              imageUrl: base64Data, // 直接返回base64数据
+              format: imageFormat,
+              size: imageBuffer.length,
+              originalPath: entry.entryName,
+              originalFileName: originalFileName
             }
 
             imagesList.push(imageInfo)
@@ -110,12 +140,12 @@ class ImageExtractionService {
         // 处理.doc文件（二进制格式）
         // 注意：.doc文件格式较复杂，这里提供基础信息
         const imageInfo = {
-          图片描述: 'Word文档图片',
-          图片地址: '',
-          图片格式: 'DOC',
-          图片路径: docxPath,
-          原始文件名: originalFileName,
-          备注: '.doc文件格式复杂，需要专门的库处理'
+          description: 'Word文档图片',
+          imageUrl: '',
+          format: 'DOC',
+          filePath: docxPath,
+          originalFileName: originalFileName,
+          note: '.doc文件格式复杂，需要专门的库处理'
         }
 
         imagesList.push(imageInfo)
@@ -149,29 +179,14 @@ class ImageExtractionService {
   }
 
   /**
-   * 获取所有提取的图片列表
+   * 获取所有提取的图片列表（保留此方法以兼容现有代码，但返回空数组）
    * @returns {Promise<Array>} 图片信息列表
    */
   async getAllImages() {
     try {
-      const imageFiles = await fs.readdir(this.imagesDir)
-      const imagesList = []
-
-      for (const fileName of imageFiles) {
-        const filePath = path.join(this.imagesDir, fileName)
-        const stats = await fs.stat(filePath)
-
-        imagesList.push({
-          图片描述: fileName,
-          图片地址: `/extracted_images/${fileName}`,
-          图片格式: path.extname(fileName).substring(1).toUpperCase(),
-          图片路径: filePath,
-          文件大小: stats.size,
-          创建时间: stats.birthtime
-        })
-      }
-
-      return imagesList
+      // 由于现在图片不再保存到本地，返回空数组
+      console.log('图片现在以base64格式返回，不再保存到本地文件')
+      return []
     } catch (error) {
       console.error('获取图片列表失败:', error)
       throw new Error(`获取图片列表失败: ${error.message}`)

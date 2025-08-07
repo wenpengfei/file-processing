@@ -366,7 +366,7 @@
             <div class="results-section" id="resultsSection">
                 <div class="results-header">
                     <div class="results-title">提取结果</div>
-                    <button class="refresh-btn" onclick="loadImages()">刷新列表</button>
+                    <div class="results-hint">图片以base64格式返回，无需刷新</div>
                 </div>
                 <div class="images-grid" id="imagesGrid"></div>
             </div>
@@ -532,7 +532,13 @@
 
                 if (result.success) {
                     showSuccess(`成功提取 ${result.data.totalImages} 张图片`);
-                    await loadImages(); // 刷新图片列表
+                    // 直接显示提取的图片，而不是加载图片列表
+                    if (result.data.images && result.data.images.length > 0) {
+                        displayImages(result.data.images);
+                        resultsSection.style.display = 'block';
+                    } else {
+                        resultsSection.style.display = 'none';
+                    }
                 } else {
                     throw new Error(result.message || '处理失败');
                 }
@@ -580,20 +586,23 @@
                 const imageCard = document.createElement('div');
                 imageCard.className = 'image-card';
 
-                const isImageFile = ['JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'WEBP'].includes(image.图片格式);
+                const isImageFile = ['JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'WEBP'].includes(image.format);
+
+                // 检查图片地址是否为base64格式
+                const isBase64 = image.imageUrl && image.imageUrl.startsWith('data:image/');
 
                 imageCard.innerHTML = `
                     <div class="image-preview">
-                        ${isImageFile ?
-                        `<img src="${API_BASE_URL}${image.图片地址}" alt="${image.图片描述}" style="max-width: 100%; max-height: 100%; object-fit: contain;">` :
-                        `<div>📄 ${image.图片格式}</div>`
+                        ${isImageFile && (isBase64 || image.imageUrl) ?
+                        `<img src="${isBase64 ? image.imageUrl : API_BASE_URL + image.imageUrl}" alt="${image.description}" style="max-width: 100%; max-height: 100%; object-fit: contain;">` :
+                        `<div>📄 ${image.format}</div>`
                     }
                     </div>
                     <div class="image-info">
-                        <div class="image-name">${image.图片描述}</div>
+                        <div class="image-name">${image.description}</div>
                         <div class="image-details">
-                            格式: ${image.图片格式} | 
-                            大小: ${image.文件大小 ? formatFileSize(image.文件大小) : '未知'}
+                            格式: ${image.format} | 
+                            大小: ${image.size ? formatFileSize(image.size) : (image.fileSize ? formatFileSize(image.fileSize) : '未知')}
                         </div>
                     </div>
                 `;
@@ -665,7 +674,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             initializeEventListeners();
             checkServerHealth();
-            loadImages(); // 加载现有图片
+            // 不再加载现有图片，因为图片现在以base64格式返回
+            resultsSection.style.display = 'none';
         });
     </script>
 </body>

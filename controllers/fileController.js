@@ -91,13 +91,14 @@ class FileController {
    */
   async getImagesList(req, res) {
     try {
-      const imagesList = await this.imageExtractionService.getAllImages()
-
+      // 由于图片现在以base64格式返回，不再保存到本地
+      // 这个端点主要用于兼容性，返回空列表
       res.json({
         success: true,
+        message: '图片现在以base64格式返回，不再保存到本地文件',
         data: {
-          totalImages: imagesList.length,
-          images: imagesList
+          totalImages: 0,
+          images: []
         }
       })
     } catch (error) {
