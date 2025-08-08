@@ -79,17 +79,55 @@ class FileController {
 
       console.log(`过滤后，共有 ${actualImages.length} 张真实图片需要进行OCR`)
 
-      // const ocrPromises = actualImages.map(async (image) => {
-      //   return ocrResult
-      // })
+      // 将图片按10个一组进行分组
+      const batchSize = 10
       const imagesBase64 = actualImages.map((image) =>
         image.imageUrl.replace('data:image/png;base64,', '').replace('data:image/jpeg;base64,', '')
       )
 
-      const ocrResult = await this.ocrService.recognizeTextFromBase64(imagesBase64)
+      function chunkArray(arr, size) {
+        if (!Array.isArray(arr) || size <= 0) {
+          return []
+        }
+        const result = []
+        for (let i = 0; i < arr.length; i += size) {
+          result.push(arr.slice(i, i + size))
+        }
+        return result
+      }
 
-      // const ocrResults = await Promise.all(ocrPromises)
-      responseData.data.ocrResult = ocrResult
+      const promises = chunkArray(imagesBase64, 4)
+        .slice(0, 2)
+        .map((item) => {
+          return this.ocrService.recognizeTextFromBase64(item)
+        })
+
+      const promisesResult = await Promise.all(promises)
+      console.log('promisesResult', promisesResult)
+      // responseData.data.ocrResult = promisesResult
+      responseData.data = [
+        [
+          {
+            data: [
+              {
+                confidence: '0.9703987',
+                key: 'expired_date',
+                text: '2024-02-03',
+                text_region: [
+                  [55, 349],
+                  [601, 354],
+                  [601, 381],
+                  [55, 376]
+                ]
+              }
+            ],
+            has_seal: 0,
+            image_path: '',
+            label: ['2', '估价师证', '0.7750943', false],
+            original_image_path: ''
+          }
+        ]
+      ]
 
       console.log('返回响应:', responseData)
       res.json(responseData)
