@@ -34,6 +34,21 @@ app.post(
   fileController.getUploadMiddleware().single('file'),
   fileController.handleFileUpload.bind(fileController)
 )
+app.post(
+  '/detect-image-after-text',
+  fileController.getUploadMiddleware().single('file'),
+  fileController.detectImageAfterText.bind(fileController)
+)
+app.post(
+  '/find-text-position',
+  fileController.getUploadMiddleware().single('file'),
+  fileController.findTextPosition.bind(fileController)
+)
+app.post(
+  '/extract-document-content',
+  fileController.getUploadMiddleware().single('file'),
+  fileController.handleDocumentContentExtraction.bind(fileController)
+)
 app.get('/images', fileController.getImagesList.bind(fileController))
 app.get('/health', fileController.healthCheck.bind(fileController))
 
@@ -83,6 +98,9 @@ app.listen(PORT, () => {
   console.log(`🚀 文件处理服务已启动，端口: ${PORT}`)
   console.log(`🌐 CORS状态: ${CorsService.getCorsStatus()}`)
   console.log(`📤 上传接口: POST http://localhost:${PORT}/extract-images`)
+  console.log(`🔍 文档图片检测: POST http://localhost:${PORT}/detect-image-after-text`)
+  console.log(`🔍 文字位置查找: POST http://localhost:${PORT}/find-text-position`)
+  console.log(`📄 文档内容提取: POST http://localhost:${PORT}/convert-document-to-html`)
   console.log(`📋 图片列表: GET http://localhost:${PORT}/images`)
   console.log(`❤️  健康检查: GET http://localhost:${PORT}/health`)
   console.log(`🖼️  图片访问: http://localhost:${PORT}/extracted_images/`)
