@@ -677,7 +677,8 @@ class DocumentAnalysisService {
         styleMap = null, // 自定义样式映射
         convertImage = null, // 图片转换函数
         ignoreEmptyParagraphs = false, // 是否忽略空段落
-        idPrefix = 'doc-content' // HTML ID 前缀
+        idPrefix = 'doc-content', // HTML ID 前缀
+        targetText = '' // 目标文字
       } = options
 
       let htmlContent,
@@ -747,7 +748,7 @@ class DocumentAnalysisService {
         message: '',
         data: {
           cleanedHtmlText: this.extractTextFromHtml(htmlContent),
-          isValid: this.isFollowedByImage(this.extractTextFromHtml(htmlContent), '测试文字内容'),
+          isValid: this.isFollowedByImage(this.extractTextFromHtml(htmlContent), targetText),
           originalFile: path.basename(documentPath)
         }
       }

@@ -350,7 +350,7 @@ class FileController {
   async handleDocumentContentExtraction(req, res) {
     try {
       console.log('收到文档内容提取请求')
-      console.log('请求体:', req.body)
+      console.log('请求体:', req.query)
 
       // 验证请求参数
       if (!req.file) {
@@ -387,7 +387,8 @@ class FileController {
       const options = {
         includeImages: includeImages === 'true' || includeImages === true,
         ignoreEmptyParagraphs: ignoreEmptyParagraphs === 'true' || ignoreEmptyParagraphs === true,
-        idPrefix: idPrefix || 'doc-content'
+        idPrefix: idPrefix || 'doc-content',
+        targetText: req.query.targetText || ''
       }
 
       // 执行文档内容提取
