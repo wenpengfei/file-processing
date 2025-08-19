@@ -749,6 +749,7 @@ class DocumentAnalysisService {
         data: {
           cleanedHtmlText: this.extractTextFromHtml(htmlContent),
           isValid: this.isFollowedByImage(this.extractTextFromHtml(htmlContent), targetText),
+          targetText,
           originalFile: path.basename(documentPath)
         }
       }
