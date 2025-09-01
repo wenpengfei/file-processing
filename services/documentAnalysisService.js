@@ -3,7 +3,7 @@ const path = require('path')
 const { PDFDocument } = require('pdf-lib')
 const mammoth = require('mammoth')
 const AdmZip = require('adm-zip')
-
+const pdf2html = require('pdf2html')
 /**
  * 文档分析服务类
  * 负责分析文档中指定文字后面的内容是否为图片
@@ -709,22 +709,75 @@ class DocumentAnalysisService {
         try {
           const pdfParse = require('pdf-parse')
           const pdfBuffer = await fs.readFile(documentPath)
+
+          // 检查文件大小和内容
+          if (!pdfBuffer || pdfBuffer.length === 0) {
+            throw new Error('PDF文件为空或损坏')
+          }
+
+          console.log(`PDF文件大小: ${pdfBuffer.length} bytes`)
+
           const pdfData = await pdfParse(pdfBuffer)
 
-          // 将 PDF 文本转换为简单的 HTML
-          htmlContent = this.convertPdfTextToHtml(pdfData.text, options)
-          messages = []
+          // 详细检查PDF解析结果
+          console.log('PDF解析结果:', {
+            textLength: pdfData.text ? pdfData.text.length : 0,
+            pageCount: pdfData.numpages || 0,
+            info: pdfData.info || {},
+            metadata: pdfData.metadata || {}
+          })
+
+          // 检查提取的文本内容
+          if (!pdfData.text || pdfData.text.trim().length === 0) {
+            console.warn('PDF文本提取失败，可能原因：')
+            console.warn('- PDF是扫描版图片，没有可提取的文本')
+            console.warn('- PDF有密码保护')
+            console.warn('- PDF文件损坏')
+            console.warn('- PDF是纯图片格式')
+
+            // 尝试使用OCR或其他方法
+            htmlContent = this.handlePdfWithoutText(documentPath, options)
+            messages = [
+              {
+                type: 'warning',
+                message: 'PDF无法提取文本，可能需要OCR处理'
+              }
+            ]
+          } else {
+            // 将 PDF 文本转换为简单的 HTML
+            htmlContent = this.convertPdfTextToHtml(pdfData.text, options)
+            console.log(`PDF文本转换成功，HTML长度: ${htmlContent.length}`)
+            messages = []
+          }
         } catch (pdfError) {
-          console.warn('PDF 解析失败，尝试使用基础方法:', pdfError.message)
+          console.error('PDF 解析失败:', pdfError)
+          console.warn('尝试使用基础方法:', pdfError.message)
           // 如果 pdf-parse 不可用，使用基础方法
           htmlContent = this.convertPdfToHtmlBasic(documentPath, options)
-          messages = [{ type: 'warning', message: '使用基础 PDF 转换方法' }]
+          messages = [{ type: 'warning', message: `PDF解析失败: ${pdfError.message}` }]
         }
       }
 
-      // 检查是否有警告或错误
-      warnings = messages.filter((msg) => msg.type === 'warning')
-      errors = messages.filter((msg) => msg.type === 'error')
+      // 检查是否有警告或错误（健壮性处理，兼容非标准消息结构）
+      const normalizedMessages = Array.isArray(messages)
+        ? messages
+            .filter((msg) => msg != null)
+            .map((msg) => {
+              if (typeof msg === 'string') {
+                return { type: 'info', message: msg }
+              }
+              if (typeof msg === 'object') {
+                return {
+                  type: msg.type || 'info',
+                  message: typeof msg.message === 'string' && msg.message.length > 0 ? msg.message : JSON.stringify(msg)
+                }
+              }
+              return { type: 'info', message: String(msg) }
+            })
+        : []
+
+      warnings = normalizedMessages.filter((msg) => msg && msg.type === 'warning')
+      errors = normalizedMessages.filter((msg) => msg && msg.type === 'error')
 
       if (errors.length > 0) {
         console.warn('转换过程中出现错误:', errors)
@@ -748,7 +801,9 @@ class DocumentAnalysisService {
         message: '',
         data: {
           cleanedHtmlText: this.extractTextFromHtml(htmlContent),
-          isValid: this.isFollowedByImage(this.extractTextFromHtml(htmlContent), targetText),
+          result: targetText.split(',').map((text) => {
+            return this.isFollowedByImage(this.extractTextFromHtml(htmlContent), text) ? `` : `缺少${text}`
+          }),
           targetText,
           originalFile: path.basename(documentPath)
         }
@@ -765,151 +820,151 @@ class DocumentAnalysisService {
    * @param {Object} options - 选项
    * @returns {string} 完整的 HTML 文档
    */
-  generateCompleteHtmlDocument(content, options = {}) {
-    const { title = '转换的文档', includeStyles = true, responsive = true } = options
+  //   generateCompleteHtmlDocument(content, options = {}) {
+  //     const { title = '转换的文档', includeStyles = true, responsive = true } = options
 
-    const styles = includeStyles
-      ? `
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-          line-height: 1.6;
-          color: #333;
-          max-width: 800px;
-          margin: 0 auto;
-          padding: 20px;
-          background-color: #f9f9f9;
-        }
-        
-        .document-container {
-          background: white;
-          padding: 40px;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        h1, h2, h3, h4, h5, h6 {
-          color: #2c3e50;
-          margin-top: 1.5em;
-          margin-bottom: 0.5em;
-        }
-        
-        h1 { font-size: 2em; border-bottom: 2px solid #3498db; padding-bottom: 0.3em; }
-        h2 { font-size: 1.5em; border-bottom: 1px solid #ecf0f1; padding-bottom: 0.2em; }
-        h3 { font-size: 1.3em; }
-        
-        p {
-          margin-bottom: 1em;
-          text-align: justify;
-        }
-        
-        img {
-          max-width: 100%;
-          height: auto;
-          border-radius: 4px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-          margin: 1em 0;
-        }
-        
-        table {
-          border-collapse: collapse;
-          width: 100%;
-          margin: 1em 0;
-        }
-        
-        table, th, td {
-          border: 1px solid #ddd;
-        }
-        
-        th, td {
-          padding: 12px;
-          text-align: left;
-        }
-        
-        th {
-          background-color: #f8f9fa;
-          font-weight: 600;
-        }
-        
-        ul, ol {
-          margin-bottom: 1em;
-          padding-left: 2em;
-        }
-        
-        li {
-          margin-bottom: 0.5em;
-        }
-        
-        blockquote {
-          border-left: 4px solid #3498db;
-          margin: 1em 0;
-          padding-left: 1em;
-          font-style: italic;
-          color: #555;
-        }
-        
-        code {
-          background-color: #f8f9fa;
-          padding: 2px 4px;
-          border-radius: 3px;
-          font-family: 'Courier New', monospace;
-          font-size: 0.9em;
-        }
-        
-        pre {
-          background-color: #f8f9fa;
-          padding: 1em;
-          border-radius: 4px;
-          overflow-x: auto;
-          border: 1px solid #e9ecef;
-        }
-        
-        pre code {
-          background: none;
-          padding: 0;
-        }
-        
-        ${
-          responsive
-            ? `
-        @media (max-width: 768px) {
-          body {
-            padding: 10px;
-          }
-          
-          .document-container {
-            padding: 20px;
-          }
-          
-          h1 { font-size: 1.5em; }
-          h2 { font-size: 1.3em; }
-          h3 { font-size: 1.1em; }
-        }
-        `
-            : ''
-        }
-      </style>
-    `
-      : ''
+  //     const styles = includeStyles
+  //       ? `
+  //       <style>
+  //         body {
+  //           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  //           line-height: 1.6;
+  //           color: #333;
+  //           max-width: 800px;
+  //           margin: 0 auto;
+  //           padding: 20px;
+  //           background-color: #f9f9f9;
+  //         }
 
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    ${styles}
-</head>
-<body>
-    <div class="document-container">
-        ${content}
-    </div>
-</body>
-</html>`
-  }
+  //         .document-container {
+  //           background: white;
+  //           padding: 40px;
+  //           border-radius: 8px;
+  //           box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  //         }
+
+  //         h1, h2, h3, h4, h5, h6 {
+  //           color: #2c3e50;
+  //           margin-top: 1.5em;
+  //           margin-bottom: 0.5em;
+  //         }
+
+  //         h1 { font-size: 2em; border-bottom: 2px solid #3498db; padding-bottom: 0.3em; }
+  //         h2 { font-size: 1.5em; border-bottom: 1px solid #ecf0f1; padding-bottom: 0.2em; }
+  //         h3 { font-size: 1.3em; }
+
+  //         p {
+  //           margin-bottom: 1em;
+  //           text-align: justify;
+  //         }
+
+  //         img {
+  //           max-width: 100%;
+  //           height: auto;
+  //           border-radius: 4px;
+  //           box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  //           margin: 1em 0;
+  //         }
+
+  //         table {
+  //           border-collapse: collapse;
+  //           width: 100%;
+  //           margin: 1em 0;
+  //         }
+
+  //         table, th, td {
+  //           border: 1px solid #ddd;
+  //         }
+
+  //         th, td {
+  //           padding: 12px;
+  //           text-align: left;
+  //         }
+
+  //         th {
+  //           background-color: #f8f9fa;
+  //           font-weight: 600;
+  //         }
+
+  //         ul, ol {
+  //           margin-bottom: 1em;
+  //           padding-left: 2em;
+  //         }
+
+  //         li {
+  //           margin-bottom: 0.5em;
+  //         }
+
+  //         blockquote {
+  //           border-left: 4px solid #3498db;
+  //           margin: 1em 0;
+  //           padding-left: 1em;
+  //           font-style: italic;
+  //           color: #555;
+  //         }
+
+  //         code {
+  //           background-color: #f8f9fa;
+  //           padding: 2px 4px;
+  //           border-radius: 3px;
+  //           font-family: 'Courier New', monospace;
+  //           font-size: 0.9em;
+  //         }
+
+  //         pre {
+  //           background-color: #f8f9fa;
+  //           padding: 1em;
+  //           border-radius: 4px;
+  //           overflow-x: auto;
+  //           border: 1px solid #e9ecef;
+  //         }
+
+  //         pre code {
+  //           background: none;
+  //           padding: 0;
+  //         }
+
+  //         ${
+  //           responsive
+  //             ? `
+  //         @media (max-width: 768px) {
+  //           body {
+  //             padding: 10px;
+  //           }
+
+  //           .document-container {
+  //             padding: 20px;
+  //           }
+
+  //           h1 { font-size: 1.5em; }
+  //           h2 { font-size: 1.3em; }
+  //           h3 { font-size: 1.1em; }
+  //         }
+  //         `
+  //             : ''
+  //         }
+  //       </style>
+  //     `
+  //       : ''
+
+  //     return `<!DOCTYPE html>
+  // <html lang="zh-CN">
+  // <head>
+  //     <meta charset="UTF-8">
+  //     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  //     <title>${title}</title>
+  //     ${styles}
+  // </head>
+  // <body>
+  //     <div class="document-container">
+  //         ${content}
+  //     </div>
+  // </body>
+  // </html>`
+  //   }
 
   /**
-   * 将 PDF 文本转换为 HTML
+   * 将PDF文本转换为HTML格式
    * @param {string} pdfText - PDF 提取的文本
    * @param {Object} options - 转换选项
    * @returns {string} HTML 内容
@@ -917,32 +972,60 @@ class DocumentAnalysisService {
   convertPdfTextToHtml(pdfText, options = {}) {
     const { idPrefix = 'doc-content' } = options
 
-    if (!pdfText || pdfText.trim().length === 0) {
+    // 边界情况检查
+    if (!pdfText) {
+      console.warn('PDF文本为空: pdfText is null/undefined')
       return '<p>PDF 文档为空或无法提取文本内容</p>'
     }
 
-    // 将文本按行分割
-    const lines = pdfText.split('\n').filter((line) => line.trim().length > 0)
+    if (typeof pdfText !== 'string') {
+      console.warn(`PDF文本类型错误: expected string, got ${typeof pdfText}`)
+      return '<p>PDF 文档格式错误，无法处理</p>'
+    }
 
-    // 转换为 HTML
-    const htmlLines = lines.map((line, index) => {
-      const trimmedLine = line.trim()
+    if (pdfText.trim().length === 0) {
+      console.warn('PDF文本为空字符串或只包含空白字符')
+      return '<p>PDF 文档为空或无法提取文本内容</p>'
+    }
 
-      // 检测标题（简单规则）
-      if (trimmedLine.length < 100 && (trimmedLine.endsWith('.') || trimmedLine.endsWith(':'))) {
-        return `<h3 id="${idPrefix}-${index}">${this.escapeHtml(trimmedLine)}</h3>`
+    console.log(`开始转换PDF文本，长度: ${pdfText.length}`)
+
+    try {
+      // 将文本按行分割
+      const lines = pdfText.split('\n').filter((line) => line.trim().length > 0)
+
+      if (lines.length === 0) {
+        console.warn('PDF文本分割后没有有效行')
+        return '<p>PDF 文档内容为空或格式异常</p>'
       }
 
-      // 检测列表项
-      if (trimmedLine.match(/^[\d\-•]+\.?\s/)) {
-        return `<li>${this.escapeHtml(trimmedLine.replace(/^[\d\-•]+\.?\s/, ''))}</li>`
-      }
+      console.log(`PDF文本分割后有效行数: ${lines.length}`)
 
-      // 普通段落
-      return `<p id="${idPrefix}-${index}">${this.escapeHtml(trimmedLine)}</p>`
-    })
+      // 转换为 HTML
+      const htmlLines = lines.map((line, index) => {
+        const trimmedLine = line.trim()
 
-    return htmlLines.join('\n')
+        // 检测标题（简单规则）
+        if (trimmedLine.length < 100 && (trimmedLine.endsWith('.') || trimmedLine.endsWith(':'))) {
+          return `<h3 id="${idPrefix}-${index}">${this.escapeHtml(trimmedLine)}</h3>`
+        }
+
+        // 检测列表项
+        if (trimmedLine.match(/^[\d\-•]+\.?\s/)) {
+          return `<li>${this.escapeHtml(trimmedLine.replace(/^[\d\-•]+\.?\s/, ''))}</li>`
+        }
+
+        // 普通段落
+        return `<p id="${idPrefix}-${index}">${this.escapeHtml(trimmedLine)}</p>`
+      })
+
+      const result = htmlLines.join('\n')
+      console.log(`PDF文本转换完成，HTML长度: ${result.length}`)
+      return result
+    } catch (error) {
+      console.error('PDF文本转换过程中出错:', error)
+      return `<p>PDF 文本转换失败: ${this.escapeHtml(error.message)}</p>`
+    }
   }
 
   /**
@@ -953,13 +1036,67 @@ class DocumentAnalysisService {
    */
   convertPdfToHtmlBasic(pdfPath, options = {}) {
     const { idPrefix = 'doc-content' } = options
+    const fileName = path.basename(pdfPath)
 
     return `
       <div id="${idPrefix}-container">
         <h2>PDF 文档转换</h2>
-        <p>由于缺少 PDF 解析库，无法提取 PDF 内容。</p>
-        <p>请安装 pdf-parse 依赖：<code>npm install pdf-parse</code></p>
-        <p>文件路径：${pdfPath}</p>
+        <p>由于PDF解析失败，无法提取PDF内容。</p>
+        <p>文件路径：${fileName}</p>
+        <p>请检查PDF文件是否损坏或尝试其他PDF文件。</p>
+      </div>
+    `
+  }
+
+  /**
+   * 处理无法提取文本的PDF文件
+   * @param {string} pdfPath - PDF 文件路径
+   * @param {Object} options - 处理选项
+   * @returns {string} HTML 内容
+   */
+  handlePdfWithoutText(pdfPath, options = {}) {
+    const { idPrefix = 'doc-content' } = options
+    const fileName = path.basename(pdfPath)
+
+    return `
+      <div id="${idPrefix}-container">
+        <h2>PDF 文档分析结果</h2>
+        <div class="pdf-info">
+          <h3>文件信息</h3>
+          <p><strong>文件名：</strong>${fileName}</p>
+          <p><strong>文件路径：</strong>${pdfPath}</p>
+          <p><strong>状态：</strong><span class="warning">无法提取文本内容</span></p>
+        </div>
+
+        <div class="possible-reasons">
+          <h3>可能的原因</h3>
+          <ul>
+            <li>PDF是扫描版图片，没有可提取的文本</li>
+            <li>PDF有密码保护</li>
+            <li>PDF文件损坏</li>
+            <li>PDF是纯图片格式</li>
+          </ul>
+        </div>
+
+        <div class="suggestions">
+          <h3>建议解决方案</h3>
+          <ul>
+            <li>检查PDF是否为扫描版，如果是，建议使用OCR服务</li>
+            <li>确认PDF没有密码保护</li>
+            <li>尝试用其他PDF阅读器打开验证文件完整性</li>
+            <li>如果包含图片，可以提取图片进行分析</li>
+          </ul>
+        </div>
+
+        <div class="next-steps">
+          <h3>下一步操作</h3>
+          <p>由于无法提取文本内容，建议：</p>
+          <ol>
+            <li>使用OCR服务处理扫描版PDF</li>
+            <li>手动检查PDF文件内容</li>
+            <li>联系文档提供方获取可编辑版本</li>
+          </ol>
+        </div>
       </div>
     `
   }
@@ -1064,21 +1201,71 @@ class DocumentAnalysisService {
   }
 
   isFollowedByImage(originalStr, givenStr) {
-    // 如果给定字符串为空，直接返回false
-    if (!givenStr) return false
+    // 使用 split 简化：parts = A givenStr B givenStr C ...
+    // 若任意一次出现后紧跟 [image]，则对应的下一段 parts[i+1] 以 [image] 开头
+    if (!originalStr || !givenStr) return false
 
-    // 查找给定字符串在原始字符串中的位置
-    const index = originalStr.indexOf(givenStr)
+    const parts = originalStr.split(givenStr)
+    if (parts.length <= 1) return false
 
-    // 如果找不到给定字符串，返回false
-    if (index === -1) return false
+    for (let i = 0; i < parts.length - 1; i++) {
+      const nextSegment = parts[i + 1]
+      if (typeof nextSegment === 'string' && nextSegment.startsWith('[image]')) {
+        return true
+      }
+    }
 
-    // 计算给定字符串结束的位置
-    const endPos = index + givenStr.length
-
-    // 检查给定字符串结束后是否紧跟着[image]
-    return originalStr.substring(endPos, endPos + 7) === '[image]'
+    return false
   }
+
+  /**
+   * 获取所有后面紧跟 [image] 的匹配位置
+   * @param {string} originalStr - 原始字符串
+   * @param {string} givenStr - 要查找的字符串
+   * @returns {Array<{startIndex:number,endIndex:number}>} 紧跟图片的匹配区间
+   */
+  // getOccurrencesFollowedByImage(originalStr, givenStr) {
+  //   const matches = []
+  //   if (!originalStr || !givenStr) return matches
+
+  //   let searchStartIndex = 0
+  //   let currentIndex = -1
+
+  //   while ((currentIndex = originalStr.indexOf(givenStr, searchStartIndex)) !== -1) {
+  //     const endPos = currentIndex + givenStr.length
+  //     if (originalStr.substring(endPos, endPos + 7) === '[image]') {
+  //       matches.push({ startIndex: currentIndex, endIndex: endPos })
+  //     }
+  //     searchStartIndex = currentIndex + givenStr.length
+  //   }
+
+  //   return matches
+  // }
+
+  /**
+   * 判断所有出现的 givenStr 是否都紧跟 [image]
+   * @param {string} originalStr - 原始字符串
+   * @param {string} givenStr - 要查找的字符串
+   * @returns {boolean} 若至少有一次出现且每次出现后都紧跟 [image] 则返回 true
+   */
+  // areAllOccurrencesFollowedByImage(originalStr, givenStr) {
+  //   if (!originalStr || !givenStr) return false
+
+  //   let searchStartIndex = 0
+  //   let currentIndex = -1
+  //   let foundAny = false
+
+  //   while ((currentIndex = originalStr.indexOf(givenStr, searchStartIndex)) !== -1) {
+  //     foundAny = true
+  //     const endPos = currentIndex + givenStr.length
+  //     if (originalStr.substring(endPos, endPos + 7) !== '[image]') {
+  //       return false
+  //     }
+  //     searchStartIndex = currentIndex + givenStr.length
+  //   }
+
+  //   return foundAny
+  // }
 }
 
 module.exports = DocumentAnalysisService
