@@ -1,18 +1,18 @@
-# 使用官方Node.js运行时作为基础镜像
-FROM node:18-alpine AS base
+# 使用官方Node.js运行时作为基础镜像（使用Debian-based而不是Alpine）
+FROM node:22.12.0-slim AS base
 
 # 设置工作目录
 WORKDIR /app
 
 # 安装系统依赖（用于PDF处理和图像处理）
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     poppler-utils \
-    tesseract \
-    tesseract-data-chi-sim \
-    tesseract-data-eng \
+    tesseract-ocr \
+    tesseract-ocr-chi-sim \
+    tesseract-ocr-eng \
     imagemagick \
     ghostscript \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # 复制package.json和pnpm-lock.yaml
 COPY package.json pnpm-lock.yaml ./
